@@ -39,23 +39,23 @@ class Config:
     dataset_path: str
     """Path to the dataset directory."""
 
-    output_dir: str = "/tmp/gr00t"
+    output_dir: str = "/home/aware/models/gr00t/real_arm_v9"
     """Directory to save model checkpoints."""
 
-    data_config: str = "gr1_arms_only"
+    data_config: str = "curve_arm"
     """Data configuration name from DATA_CONFIG_MAP."""
 
     # Training parameters
-    batch_size: int = 16
+    batch_size: int = 1
     """Batch size per GPU for training."""
 
-    max_steps: int = 10000
+    max_steps: int = 100000
     """Maximum number of training steps."""
 
     num_gpus: int = 1
     """Number of GPUs to use for training."""
 
-    save_steps: int = 500
+    save_steps: int = 10000
     """Number of steps between saving checkpoints."""
 
     # Model parameters
@@ -65,7 +65,7 @@ class Config:
     tune_llm: bool = False
     """Whether to fine-tune the language model backbone."""
 
-    tune_visual: bool = True
+    tune_visual: bool = False #True
     """Whether to fine-tune the vision tower."""
 
     tune_projector: bool = True
@@ -177,7 +177,7 @@ def main(config: Config):
         weight_decay=config.weight_decay,
         warmup_ratio=config.warmup_ratio,
         lr_scheduler_type="cosine",
-        logging_steps=10.0,
+        logging_steps=100.0,
         num_train_epochs=300,
         max_steps=config.max_steps,
         save_strategy="steps",
@@ -186,11 +186,13 @@ def main(config: Config):
         save_total_limit=8,
         report_to=config.report_to,
         seed=42,
-        do_eval=False,
+        do_eval=True,
         ddp_find_unused_parameters=False,
         ddp_bucket_cap_mb=100,
         torch_compile_mode=None,
     )
+
+    data = train_dataset.get_step_data(0, 0)
 
     # 2.2 run experiment
     experiment = TrainRunner(

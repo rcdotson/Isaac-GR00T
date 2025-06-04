@@ -33,6 +33,8 @@ from .schema import (
     LeRobotStateActionMetadata,
 )
 from .transform import ComposedModalityTransform
+from PIL import Image
+import io
 
 LE_ROBOT_MODALITY_FILENAME = "meta/modality.json"
 LE_ROBOT_EPISODE_FILENAME = "meta/episodes.jsonl"
@@ -59,7 +61,11 @@ def calculate_dataset_statistics(parquet_paths: list[Path]) -> dict:
     # Compute dataset statistics
     dataset_statistics = {}
     for le_modality in all_low_dim_data.columns:
+        if le_modality == "observation.images.color_image_raw":
+            continue
         print(f"Computing statistics for {le_modality}...")
+        #print(all_low_dim_data[le_modality])
+        
         np_data = np.vstack(
             [np.asarray(x, dtype=np.float32) for x in all_low_dim_data[le_modality]]
         )
@@ -298,8 +304,11 @@ class LeRobotSingleDataset(Dataset):
                 channels = le_video_meta["shape"][le_video_meta["names"].index("channel")]
                 fps = le_video_meta["video_info"]["video.fps"]
             except ValueError:
-                channels = le_video_meta["shape"][le_video_meta["names"].index("channels")]
-                fps = le_video_meta["info"]["video.fps"]
+                #channels = le_video_meta["shape"][le_video_meta["names"].index("channels")]
+                #fps = le_video_meta["info"]["video.fps"]
+                channels=3
+                fps=15
+
             simplified_modality_meta["video"][new_key] = {
                 "resolution": [width, height],
                 "channels": channels,
@@ -520,6 +529,9 @@ class LeRobotSingleDataset(Dataset):
             # Get the data corresponding to each key in the modality
             for key in self.modality_keys[modality]:
                 data[key] = self.get_data_by_modality(trajectory_id, modality, key, base_index)
+        
+        #print("Step data")
+        #print(data)
         return data
 
     def get_trajectory_data(self, trajectory_id: int) -> pd.DataFrame:
@@ -655,6 +667,46 @@ class LeRobotSingleDataset(Dataset):
             video_backend=self.video_backend,
             video_backend_kwargs=self.video_backend_kwargs,
         )
+    
+    def get_video_curve(
+        self,
+        trajectory_id: int,
+        key: str,
+        base_index: int,
+    ) -> np.ndarray:
+        """Get the video frames for a trajectory by a base index.
+
+        Args:
+            dataset (BaseSingleDataset): The dataset to retrieve the data from.
+            trajectory_id (str): The ID of the trajectory.
+            key (str): The key of the video.
+            base_index (int): The base index of the trajectory.
+
+        Returns:
+            np.ndarray: The video frames for the trajectory and frame indices. Shape: (T, H, W, C)
+        """
+        # Get the step indices
+        step_indices = self.delta_indices[key] + base_index
+        # print(f"{step_indices=}")
+        # Get the trajectory index
+        trajectory_index = self.get_trajectory_index(trajectory_id)
+        # Ensure the indices are within the valid range
+        # This is equivalent to padding the video with extra frames at the beginning and end
+        step_indices = np.maximum(step_indices, 0)
+        step_indices = np.minimum(step_indices, self.trajectory_lengths[trajectory_index] - 1)
+        assert key.startswith("video."), f"Video key must start with 'video.', got {key}"
+        # Get the sub-key
+        key = key.replace("video.", "")        
+        
+        self.curr_traj_data = self.get_trajectory_data(trajectory_id)
+        #print(self.curr_traj_data[f"observation.images.color_image_raw"].bytes)
+        data = self.curr_traj_data[f"observation.images.color_image_raw"][step_indices]
+        frames = []
+        for i in step_indices:
+            rgb = Image.open(io.BytesIO(data[i]["bytes"]))
+            frames.append(rgb)
+        return np.array(frames)
+        
 
     def get_state_or_action(
         self,
@@ -757,6 +809,7 @@ class LeRobotSingleDataset(Dataset):
             original_key = key
         for i in range(len(step_indices)):
             task_indices.append(self.curr_traj_data[original_key][step_indices[i]].item())
+        #print(self.tasks.loc[task_indices]["task"].tolist())
         return self.tasks.loc[task_indices]["task"].tolist()
 
     def get_data_by_modality(

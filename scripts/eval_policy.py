@@ -36,8 +36,8 @@ python scripts/eval_policy.py --host localhost --port 5555 --plot
     --action_horizon 16
     --video_backend decord
     --dataset_path demo_data/robot_sim.PickNPlace/
-    --embodiment_tag gr1
-    --data_config gr1_arms_waist
+    --embodiment_tag new_embodiment
+    --data_config carve_arm
 provide --model_path to load up the model checkpoint in this script.
 """
 
@@ -46,16 +46,19 @@ if __name__ == "__main__":
     parser.add_argument("--host", type=str, default="localhost", help="host")
     parser.add_argument("--port", type=int, default=5555, help="port")
     parser.add_argument("--plot", action="store_true", help="plot images")
-    parser.add_argument("--modality_keys", nargs="+", type=str, default=["right_arm", "right_hand"])
+    #parser.add_argument("--modality_keys", nargs="+", type=str, default=["x", "y", "z", "roll", "pitch", "yaw", "gripper"])
+    parser.add_argument("--modality_keys", nargs="+", type=str, default=["joint", "gripper"])
+    #parser.add_argument("--state_modality_keys", nargs="+", type=str, default=["zero"])
+    #parser.add_argument("--action_modality_keys", nargs="+", type=str, default=["x", "y", "z", "roll", "pitch", "yaw", "gripper", "terminate"])
     parser.add_argument(
         "--data_config",
         type=str,
-        default="gr1_arms_only",
+        default="gr1_arms_waist",
         choices=list(DATA_CONFIG_MAP.keys()),
         help="data config name",
     )
     parser.add_argument("--steps", type=int, default=150, help="number of steps to run")
-    parser.add_argument("--trajs", type=int, default=1, help="trajectories to run")
+    parser.add_argument("--trajs", type=int, default=5, help="trajectories to run")
     parser.add_argument("--action_horizon", type=int, default=16)
     parser.add_argument("--video_backend", type=str, default="decord")
     parser.add_argument("--dataset_path", type=str, default="demo_data/robot_sim.PickNPlace/")
@@ -65,18 +68,11 @@ if __name__ == "__main__":
         help="The embodiment tag for the model.",
         default="gr1",
     )
-    ## When using a model instead of client-server mode.
     parser.add_argument(
         "--model_path",
         type=str,
         default=None,
         help="[Optional] Path to the model checkpoint directory, this will disable client server mode.",
-    )
-    parser.add_argument(
-        "--denoising_steps",
-        type=int,
-        help="Number of denoising steps if model_path is provided",
-        default=4,
     )
     args = parser.parse_args()
 
@@ -92,7 +88,6 @@ if __name__ == "__main__":
             modality_config=modality_config,
             modality_transform=modality_transform,
             embodiment_tag=args.embodiment_tag,
-            denoising_steps=args.denoising_steps,
             device="cuda" if torch.cuda.is_available() else "cpu",
         )
     else:
@@ -132,7 +127,7 @@ if __name__ == "__main__":
 
     print("Total trajectories:", len(dataset.trajectory_lengths))
     print("All trajectories:", dataset.trajectory_lengths)
-    print("Running on all trajs with modality keys:", args.modality_keys)
+    print("Running on all trajs with action modality keys:", args.modality_keys)
 
     all_mse = []
     for traj_id in range(args.trajs):
@@ -141,6 +136,8 @@ if __name__ == "__main__":
             policy,
             dataset,
             traj_id,
+            #state_modality_keys=args.state_modality_keys,
+            #action_modality_keys=args.action_modality_keys,
             modality_keys=args.modality_keys,
             steps=args.steps,
             action_horizon=args.action_horizon,
